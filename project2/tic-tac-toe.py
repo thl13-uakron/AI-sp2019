@@ -12,6 +12,11 @@ A python implementation of the tic-tac-toe game from David Tourezky's Lisp versi
 
 """
 
+"""
+Program modified by Thomas Li on 12 Sep 2019
+
+"""
+
 import random
 
 
@@ -119,14 +124,66 @@ def pick_random_empty_position(board):
     else:
         return pick_random_empty_position(board)
 
+"""
+"Smart" AI strategy using state space:
+
+- Compile a list of available winning states for both side in terms
+  of the positions needed to occupy to obtain that state
+  
+- Upon a side occupying a position:
+    - Winning states containing the position on that side are updated
+      to only include the remaining required positions
+    - Winning states containing the position on the other side are
+      removed from consideration
+
+- The computer will pick a position with the goal of making as much
+  progress as possible towards getting all required positions for any
+  winning state while preventing the player from doing the same
+
+- Moves will be made in the following priority:
+    1) Occupying the last position needed for a computer winning state.
+    2) Occupying the last position needed for a human winning state.
+    3) Occupying the open position that covers the most states with
+       two remaining positions required.
+    4) Occupying the open position that covers the most states with
+       three remaining positions required.
+    5) Randomly choosing an open position.
+
+- States available to both sides will be counted equally for now
+"""
+
+# input: none
+# output: return dict containing the initial list of available winning states for both players
+#         each state is expressed as a tuple of the positions the player needs to occupy to win
+def init_state_space():
+    return {
+        _opponent: _triplets,
+        _computer: _triplets
+        }
+
+# input: identifier of player making move, position of move made, current state space
+# output: return updated state space where moving player has winning state requirements updated
+#         and defending player has unavailable winning states removed from consideration
+def update_state_space(player, position, state_space):
+    return {
+        p:new_space
+        for p in state_space
+        for old_space in [state_space[p]]
+        for new_space in
+        [[state for state in old_space if position not in state] if p is not player
+        else [tuple([pos for pos in state if pos is not position]) for state in old_space]]
+        }
+
+state_space = init_state_space()
 
 def play_one_game():
+    global state_space
+    state_space = init_state_space()
     choice = input('Would you like to go first? (y/n)')
     if choice == 'y':
         opponent_move(make_board())
     else:
         computer_move(make_board())
-
 
 
 
