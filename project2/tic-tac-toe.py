@@ -48,6 +48,10 @@ def print_board(board):
     print_row(board[7], board[8], board[9])
 
 def make_move(player, pos, board):
+    global state_space
+    state_space = update_state_space(player, pos, state_space)
+    print(state_space)
+    
     board[pos] = player
     return board
 
@@ -109,7 +113,7 @@ def computer_move(board):
 def choose_best_move(board):
 #    print('choose move: ')
 #    print(board)
-    return random_move_strategy(board)
+    return state_space_strategy(_computer, board, state_space)
 
 def random_move_strategy(board):
     pos = pick_random_empty_position(board)
@@ -161,20 +165,38 @@ def init_state_space():
         _computer: _triplets
         }
 
-# input: identifier of player making move, position of move made, current state space
+# input: identifier of player making move, position of move made, current list of states
 # output: return updated state space where moving player has winning state requirements updated
 #         and defending player has unavailable winning states removed from consideration
 def update_state_space(player, position, state_space):
     return {
-        p:new_space
-        for p in state_space
-        for old_space in [state_space[p]]
+        pl : new_space
+        for pl in state_space
+        for old_space in [state_space[pl]]
         for new_space in
-        [[state for state in old_space if position not in state] if p is not player
-        else [tuple([pos for pos in state if pos is not position]) for state in old_space]]
+        [[state for state in old_space if position not in state] if pl is not player
+          else [tuple([pos for pos in state if pos is not position]) for state in old_space]]
         }
 
 state_space = init_state_space()
+
+# input: identifier of player making move, board, current list of states
+# output: return move position selected through analysis of current winning requirements
+def state_space_strategy(player, board, state_space):
+    strategy_name = "win-state analysis"
+    
+    # get dict of open positions and winning states that include them
+    available_moves = {
+        pos : pos_states
+        for pos in range(len(board)) if board[pos] == 0
+        for pos_states in
+        [{pl : pl_states
+          for pl in state_space
+          for pl_states in
+          [[state for state in state_space[pl] if pos in state]] }]
+        }
+    
+    return [random.choice([m for m in available_moves]), strategy_name]
 
 def play_one_game():
     global state_space
