@@ -50,8 +50,6 @@ def print_board(board):
 def make_move(player, pos, board):
     global state_space
     state_space = update_state_space(player, pos, state_space)
-    print(state_space)
-    
     board[pos] = player
     return board
 
@@ -83,10 +81,10 @@ def read_a_legal_move(board):
     pos = int(input('Your move: (enter a number between 1 and 9) '))
     if not (type(pos) == int and (pos >= 1 and pos <=9)):
         print('Invalid input.')
-        read_a_legal_move(board)
+        return read_a_legal_move(board)
     elif board[pos] != 0:
         print('That space is already occupied.')
-        read_a_legal_move(board)
+        return read_a_legal_move(board)
     else:
         return pos
 
@@ -193,9 +191,70 @@ def state_space_strategy(player, board, state_space):
         [{pl : pl_states
           for pl in state_space
           for pl_states in
-          [[state for state in state_space[pl] if pos in state]] }]
+          [[state for state in state_space[pl] if pos in state]]}]
         }
+
+    # get dict of open positions and the number of selection criteria they meet
+    # criteria will be checked in order of priority as listed earlier
+    # lower-priority criteria will be checked if no single move can be selected from higher priority criteria
+
+    def get_move_priorities(get_score):
+        return {
+            pos : pos_score
+            for pos in available_moves
+            for pos_score in
+            [get_score(pos)]
+            }
+    move_priorities = get_move_priorities(lambda pos : 0)
+
+    # 1)
+    move_priorities = get_move_priorities(lambda pos : len([states for states in available_moves[pos][player]
+                                          if len(states) == 1]))
+    selected_moves = [pos for pos in move_priorities if move_priorities[pos] > 0]
+    if len(selected_moves) > 0:
+        return [selected_moves[0], strategy_name]
+
+    # 2)
+    move_priorities = get_move_priorities(lambda pos : sum([len([states for pl in state_space
+                                          if pl is not player
+                                          for states in available_moves[pos][pl]
+                                          if len(states) == 1])]))
+    selected_moves = [pos for pos in move_priorities if move_priorities[pos] > 0]
+    if len(selected_moves) > 0:
+        return [selected_moves[0], strategy_name]
+
     
+    # 3)
+    move_priorities = get_move_priorities(lambda pos : sum([len([states for pl in state_space
+                                          for states in available_moves[pos][pl]
+                                          if len(states) == 2])]))
+    selected_moves = [pos for pos in move_priorities if move_priorities[pos] > 0]
+    if len(selected_moves) > 0:
+        selected_moves = sorted(selected_moves, key = lambda pos : move_priorities[pos], reverse = True)
+        selected_moves = [pos for pos in selected_moves
+                          if move_priorities[pos] >= move_priorities[selected_moves[0]]]
+        # account for ties
+    if len(selected_moves) == 1:
+        return [selected_moves[0], strategy_name]
+
+    # 4)
+    move_priorities = get_move_priorities(lambda pos : move_priorities[pos] +
+                                          sum([len([states for pl in state_space
+                                          for states in available_moves[pos][pl]
+                                          if len(states) == 3])]))
+    selected_moves = [pos for pos in move_priorities if move_priorities[pos] > 0]
+    if len(selected_moves) > 0:
+        selected_moves = sorted(selected_moves, key = lambda pos : move_priorities[pos], reverse = True)
+        selected_moves = [pos for pos in selected_moves
+                          if move_priorities[pos] >= move_priorities[selected_moves[0]]]
+        # account for ties
+    if len(selected_moves) == 1:
+        return [selected_moves[0], strategy_name]
+    
+    
+    # 5)
+    if len(selected_moves) > 0:
+        return [random.choice([m for m in selected_moves]), strategy_name]
     return [random.choice([m for m in available_moves]), strategy_name]
 
 def play_one_game():
