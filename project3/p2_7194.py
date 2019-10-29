@@ -42,7 +42,6 @@ class Dataset:
             return True
         
         except FileNotFoundError as e:
-            print(e)
             return False
 
 class Classifier:
@@ -60,7 +59,7 @@ class Classifier:
     def get_from_dataset(self, dataset):
         self.instances = {c : [[X[i] for X in dataset.instances
                                 if X[-1] == c]
-                               for i in range(len(dataset.attributeTypes) - 1)]
+                               for i in range(len(dataset.attributeTypes))]
                           for c in dataset.classVals}
         self.types = dataset.attributeTypes
         self.labels = dataset.attributeNames
@@ -71,13 +70,22 @@ class Classifier:
                       for c in dataset.classVals}
         return
 
+    # view the set of recorded values for a particular attribute across all classes
+    def get_unique_attribute_values(self, i):
+        return set([x for c in self.instances for x in self.instances[c][i]])
+
+    # view the set of available classes
+    def get_classes(self):
+        return [c for c in self.prior]
+
     # write .bin file using classification data
     def write_to_bin(self, filename):
         return
+    
     # attempt to retrieve classification data from .bin file
     # return whether or not file operation was successful
-    def get_from_bin(self, filename, dataset):
-        return
+    def get_from_bin(self, filename):
+        return False
 
     # get p(c) for a single classification c given classification data
     def get_prior(self, c):
@@ -97,24 +105,53 @@ class Classifier:
         
     # get p(C|X) for a given instance X and a given class c
     def get_posterior(self, X, c):
-        p = self.get_prior(c)
+        prob = self.get_prior(c)
         for i in range(len(self.types) - 1):
-            p *= self.get_inverse(i, X[i], c)
-        return p
+            prob *= self.get_inverse(i, X[i], c)
+        return prob
 
     # return c with highest p(c|X) among all classes in C for given instance X
     def classify(self, X):
-        C = self.prior
+        C = self.get_classes()
         maxC = None
-        maxP = 0
+        maxProb = 0
         
         for c in C:
-            p = self.get_posterior(X, c)
-            if p > maxP:
-                maxP = p
+            prob = self.get_posterior(X, c)
+            if prob > maxProb:
+                maxProb = prob
                 maxC = c
             
         return maxC
+
+class ConfusionMatrix:
+    # matrix is 2d table in which cell (x, y) measures how many items in the
+    # dataset of class x get classified as y using the classifier
+    # instances where x == y indicate accurate classifications
+    matrix = {}
+    accuracy = 0
+
+    # create matrix
+    def __init__(self, dataset, classifier):
+        # get structure 
+        self.matrix = {c1 : {c2 : 0
+                             for c2 in dataset.classVals}
+                       for c1 in dataset.classVals}
+
+        # fill values and calculate accuracy
+        for i in range(len(dataset.instances)):
+            actual = dataset.instances[dataset.className][i]
+            classified = classifier.classify(dataset.instances[i])
+            
+            self.matrix[actual][classified] += 1
+            self.accuracy += 1 if actual == classified else 0
+
+        self.accuracy /= len(dataset.instances)
+
+    # display and format contents of matrix
+    def print(self):
+        [print(c, self.matrix[c]) for c in self.matrix]
+        return
 
 # classification info stored in local memory
 _dataset = Dataset()
@@ -125,7 +162,7 @@ def menu():
     while True:
         print("\n(1) Generate New Classifier")
         print("(2) Load and Test Classifier")
-        print("(3) Enter New Cases")
+        print("(3) Classify New Cases")
         print("(4) Quit")
 
         choice = input("Select An Option: ")
@@ -155,6 +192,7 @@ def learn_classifier():
     # 2)
     print("Generating dataset...")
     if not _dataset.get_from_arff(dataFile):
+        print("[Error] Input file not found")
         return
 
     # 3)
@@ -170,21 +208,104 @@ def learn_classifier():
 
 # second menu option
 def load_and_test():
-    # 1) get user input for name of previously saved .bin file containing classification model
-    # 2) get user input for name of .arff file containing testing data
-    # 3) process contents of model file and testing file
-    # 4) apply classifier to training data and generate confusion matrix
-    # 5) print confusion matrix
+    # 1) get user input for name of .bin file containing classification model, retrieve contents
+    # 2) get user input for name of .arff file containing testing data, retrieve contents
+    # 3) apply classifier to training data and generate confusion matrix
+    # 4) print confusion matrix
+
+    # 1)
+    global _classifier
+    classifierFile = input("\nEnter the name of the classifier file (.bin) to load, or leave the field empty to use the existing classifier: ")
+    if _classifier.get_from_bin(classifierFile):
+        print("Classifier loaded from file " + classifierFile)
+    elif classifierFile == "":
+        print("Blank input. Using currently loaded classification model...")
+    else:
+        print("Input file not found. Using currently loaded classification model...")
+
+    # 2)
+    global _dataset
+    datasetFile = input("\nEnter the name of the dataset file (.arff) to load, or leave the field empty to use the existing dataset: ")
+    if _dataset.get_from_arff(datasetFile):
+        print("Dataset loaded from file " + datasetFile)
+    elif classifierFile == "":
+        print("Blank input. Using currently loaded dataset...")
+    else:
+        print("Input file not found. Using currently loaded dataset..")
+
+    # 3)
+    try:
+        print("\nTesting...")
+        _confusionMatrix = ConfusionMatrix(_dataset, _classifier)
+
+        # 4)
+        print("\nConfusion Matrix:")
+        _confusionMatrix.print()
+        print("Accuracy: {0}%".format(_confusionMatrix.accuracy * 100))
+        
+    except ZeroDivisionError:
+        print("[Error] Attempting to work with empty dataset")
+
+    except KeyError:
+        print("[Error] Attempting to work with classifier that doesn't match dataset")
+    
     return
 
 # third menu option
 def test_new_cases():
-    # 1) generate submenu with options to a) apply the classifier to a new case or b) quit
-    # a1)
-    # a2) prompt user for value of each attribute
-    # a3) apply classifier to case and output result
-    # a3) return to submenu
-    # b1) return to menu
+    # 1) prompt user for name of classifer file, retrieve contents (last loaded classifier used if no usable filename given)
+    # 2) generate submenu with options to a) apply the classifier to a new case determined by entering each value individually,
+    #    b), apply the classifier to a new case determined by a single text input or c) quit
+    # a1), b1) prompt user for the attribute values as specified in the selection
+    # ab2) apply classifier to case and output result
+    # ab3) return to submenu
+    # c1) return to menu
+
+    # 1)
+    global _classifier
+    classifierFile = input("\nEnter the name of the classifier file (.bin) to load, or leave the field empty to use the existing classifier: ")
+    if _classifier.get_from_bin(classifierFile):
+        print("Classifier loaded from file " + classifierFile)
+    elif classifierFile == "":
+        print("Blank input. Using currently loaded classification model...")
+    else:
+        print("Input file not found. Using currently loaded classification model...")
+
+    # used for input prompt
+    attributeRanges = {_classifier.labels[i]:
+                       _classifier.types[i] if _classifier.types[i] == _numeric
+                       else _classifier.get_unique_attribute_values(i)
+                       for i in range(len(_classifier.labels))}
+
+    if (len(attributeRanges) == 0):
+        print("[Error] Classifier appears to contain no data")
+
+    # 2)
+    while True:
+        print("\n(A) Enter a New Case, Input by Attribute")
+        print("(B) Enter a New Case, Single Input")
+        print("(C) Return to Main Menu")
+
+        choice = input("Select an Option: ")
+        choice = choice.lower()
+
+        if choice == "c":
+            # c1)
+            return
+        
+        elif choice in ("a", "b"):
+            case = []
+            # a1)
+            
+            # b1)
+
+            # ab2)
+
+            # ab3)
+
+        else:
+            print("Invalid selection. Please try again.")
+    
     return
 
 # driver function
