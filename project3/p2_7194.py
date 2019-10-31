@@ -7,6 +7,9 @@ from scipy.io import arff
 _numeric = "numeric"
 _nominal = "nominal"
 
+# converting between bytes and strings
+_encoding = "ASCII"
+
 class Dataset:
     # array of data items generated from scipy library
     # can be accessed by index, returning the attributes for single item
@@ -101,13 +104,13 @@ class Classifier:
             return 1
         else:
             # discrete values - get probability through number of occurences
-            return len([v for v in vals if v == x]) / len(vals)
+            return len([v for v in vals if x.decode(_encoding).lower() == v.decode(_encoding).lower()]) / len(vals)
         
     # get p(C|X) for a given instance X and a given class c
     def get_posterior(self, X, c):
         prob = self.get_prior(c)
         for i in range(len(self.types) - 1):
-            prob *= self.get_inverse(i, X[i], c)
+            prob *= self.get_inverse(i, X[i], c) if X[i] in self.get_unique_attribute_values(i) else 1
         return prob
 
     # return c with highest p(c|X) among all classes in C for given instance X
@@ -150,7 +153,10 @@ class ConfusionMatrix:
 
     # display and format contents of matrix
     def print(self):
-        [print(c, self.matrix[c]) for c in self.matrix]
+        [print(c1.decode(_encoding) + " :",
+               {c2.decode(_encoding):self.matrix[c1][c2]
+                for c2 in self.matrix[c1]})
+         for c1 in self.matrix]
         return
 
 # classification info stored in local memory
@@ -192,7 +198,7 @@ def learn_classifier():
     # 2)
     print("Generating dataset...")
     if not _dataset.get_from_arff(dataFile):
-        print("[Error] Input file not found")
+        print("[RuntimeError] Input file not found")
         return
 
     # 3)
@@ -202,6 +208,7 @@ def learn_classifier():
     # 4)
     print("Saving classifier...")
     classifierFile = dataFile.replace(".arff", ".bin")
+    _classifier.write_to_bin(classifierFile)
     print("Classifier information saved to " + classifierFile)
         
     return
@@ -222,6 +229,10 @@ def load_and_test():
         print("Blank input. Using currently loaded classification model...")
     else:
         print("Input file not found. Using currently loaded classification model...")
+        
+    if len(_classifier.get_classes()) == 0:
+        print("[RuntimeError] Classifier appears to contain no data")
+        return
 
     # 2)
     global _dataset
@@ -232,6 +243,10 @@ def load_and_test():
         print("Blank input. Using currently loaded dataset...")
     else:
         print("Input file not found. Using currently loaded dataset..")
+
+    if len(_dataset.instances) == 0:
+        print("[RuntimeError] Dataset appears to contain no data")
+        return
 
     # 3)
     try:
@@ -244,10 +259,10 @@ def load_and_test():
         print("Accuracy: {0}%".format(_confusionMatrix.accuracy * 100))
         
     except ZeroDivisionError:
-        print("[Error] Attempting to work with empty dataset")
+        print("[ZeroDivisionError] Attempting to work with empty dataset")
 
     except KeyError:
-        print("[Error] Attempting to work with classifier that doesn't match dataset")
+        print("[KeyError] Attempting to work with classifier that doesn't match dataset")
     
     return
 
@@ -278,7 +293,8 @@ def test_new_cases():
                        for i in range(len(_classifier.labels))}
 
     if (len(attributeRanges) == 0):
-        print("[Error] Classifier appears to contain no data")
+        print("[RuntimeError] Classifier appears to contain no data")
+        return
 
     # 2)
     while True:
@@ -294,14 +310,41 @@ def test_new_cases():
             return
         
         elif choice in ("a", "b"):
+            print("")
             case = []
-            # a1)
-            
-            # b1)
 
-            # ab2)
+            try:
+                # a1)
+                if choice == "a":
+                    case = [(input("Enter a value for {0} ({1}): ".format(x, attributeRanges[x]
+                                                                          if attributeRanges[x] == _numeric
+                                                                          else [h.decode(_encoding)
+                                                                                for h in attributeRanges[x]]
+                                                                          ))
+                             ).encode(_encoding)
+                            for x in attributeRanges]
+                
+                # b1)
+                if choice == "b":
+                    prompt = "Enter the values for "
+                    for x in attributeRanges:
+                        prompt = prompt + "{0} (values: {1}), ".format(x, attributeRanges[x]
+                                                               if attributeRanges[x] == _numeric
+                                                               else [h.decode(_encoding)
+                                                                     for h in attributeRanges[x]])
+                    prompt = prompt + "each separated by a single space: "
+                    case = input(prompt).split(" ")
 
-            # ab3)
+                    case = [x.encode(_encoding) for x in case]
+                # ab2)
+                classification = _classifier.classify(case)
+                print("\nCase {0} was classified as [{1}]".format([x.decode(_encoding) for x in case], classification.decode(_encoding)))
+                if classification == None:
+                    print("The case being classified as None means that either every class has a probability of 0 or there are no classes.")
+                
+                
+            except IndexError:
+                print("[IndexError] The entered case appears to not match the specified format")
 
         else:
             print("Invalid selection. Please try again.")
