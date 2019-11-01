@@ -1,5 +1,8 @@
 # Program written by Thomas Li
-# From 14 October 2019 to
+# From 14 October 2019 to 3 November 2019
+
+# This is a program that can generate classification models for .arff files.
+# For the scope of this project, this program only handles nominal attribute values.
 
 from scipy.io import arff
 
@@ -48,10 +51,10 @@ class Dataset:
             return False
 
 class Classifier:
-    # store instances of each attribute value for items of each class value
-    # in the dataset in addition to whether an attribute is numeric or nominal
-    # to allow the calculation of conditional inverse probabilities
-    instances = {}
+    # store inverse probabilities for each attribute value and class value
+    inverse = {}
+
+    # store the names and types of each attribute label
     types = []
     labels = []
 
@@ -60,34 +63,36 @@ class Classifier:
 
     # obtain attribute instances and probabilities from dataset
     def get_from_dataset(self, dataset):
-        self.instances = {c : [[X[i] for X in dataset.instances
-                                if X[-1] == c]
-                               for i in range(len(dataset.attributeTypes))]
-                          for c in dataset.classVals}
+        self.inverse = {c.decode(_encoding) :
+                        [{x.decode(_encoding) :
+                        len([case for case in cases if case[i] == x]) / len(cases)
+                          for x in set(dataset.instances[dataset.attributeNames[i]])
+                          for cases in [[h for h in dataset.instances if h[-1] == c]]}
+                         for i in range(len(dataset.attributeNames))]
+                        for c in dataset.classVals}
         self.types = dataset.attributeTypes
         self.labels = dataset.attributeNames
-        self.prior = {c : len([X
-                               for X in dataset.instances
-                               if X[-1] == c])
-                          / len(dataset.instances)
+        self.prior = {c.decode(_encoding) :
+                      len([X for X in dataset.instances if X[-1] == c])
+                      / len(dataset.instances)
                       for c in dataset.classVals}
         return
 
-    # view the set of recorded values for a particular attribute across all classes
-    def get_unique_attribute_values(self, i):
-        return set([x for c in self.instances for x in self.instances[c][i]])
-
     # view the set of available classes
     def get_classes(self):
-        return [c for c in self.prior]
+        return [c for c in self.inverse]
+    
+    # view the set of recorded values for a particular attribute across all classes
+    def get_unique_attribute_values(self, i):
+        return [h for h in self.inverse[self.get_classes()[0]][i]]
 
-    # write .bin file using classification data
-    def write_to_bin(self, filename):
+    # write .json file using classification data
+    def write_to_file(self, filename):
         return
     
-    # attempt to retrieve classification data from .bin file
+    # attempt to retrieve classification data from .json file
     # return whether or not file operation was successful
-    def get_from_bin(self, filename):
+    def get_from_file(self, filename):
         return False
 
     # get p(c) for a single classification c given classification data
@@ -97,14 +102,12 @@ class Classifier:
     # get p(x|C) for a single hypothesis x and single classification c
     def get_inverse(self, attributeIndex, x, c):
         # conditional set of attribute values classified as c
-        vals = self.instances[c][attributeIndex]
-        
         if self.types[attributeIndex] == _numeric:
             # continuous values - get probability through statisical methods
             return 1
         else:
             # discrete values - get probability through number of occurences
-            return len([v for v in vals if x.decode(_encoding).lower() == v.decode(_encoding).lower()]) / len(vals)
+            return self.inverse[c][attributeIndex][x]
         
     # get p(C|X) for a given instance X and a given class c
     def get_posterior(self, X, c):
@@ -137,24 +140,25 @@ class ConfusionMatrix:
     # create matrix
     def __init__(self, dataset, classifier):
         # get structure 
-        self.matrix = {c1 : {c2 : 0
-                             for c2 in dataset.classVals}
-                       for c1 in dataset.classVals}
+        self.matrix = {c1 : {c2 : 0 for c2 in classifier.get_classes()}
+                       for c1 in classifier.get_classes()}
 
         # fill values and calculate accuracy
+        
         for i in range(len(dataset.instances)):
-            actual = dataset.instances[dataset.className][i]
-            classified = classifier.classify(dataset.instances[i])
+            actual = dataset.instances[dataset.className][i].decode(_encoding)
+            classified = classifier.classify([x.decode(_encoding) for x in dataset.instances[i]])
             
             self.matrix[actual][classified] += 1
             self.accuracy += 1 if actual == classified else 0
 
         self.accuracy /= len(dataset.instances)
+        
 
     # display and format contents of matrix
     def print(self):
-        [print(c1.decode(_encoding) + " :",
-               {c2.decode(_encoding):self.matrix[c1][c2]
+        [print(c1 + " :",
+               {c2 : self.matrix[c1][c2]
                 for c2 in self.matrix[c1]})
          for c1 in self.matrix]
         return
@@ -207,8 +211,8 @@ def learn_classifier():
 
     # 4)
     print("Saving classifier...")
-    classifierFile = dataFile.replace(".arff", ".bin")
-    _classifier.write_to_bin(classifierFile)
+    classifierFile = dataFile.replace(".arff", ".json")
+    _classifier.write_to_file(classifierFile)
     print("Classifier information saved to " + classifierFile)
         
     return
@@ -222,8 +226,8 @@ def load_and_test():
 
     # 1)
     global _classifier
-    classifierFile = input("\nEnter the name of the classifier file (.bin) to load, or leave the field empty to use the existing classifier: ")
-    if _classifier.get_from_bin(classifierFile):
+    classifierFile = input("\nEnter the name of the classifier file (.json) to load, or leave the field empty to use the existing classifier: ")
+    if _classifier.get_from_file(classifierFile):
         print("Classifier loaded from file " + classifierFile)
     elif classifierFile == "":
         print("Blank input. Using currently loaded classification model...")
@@ -278,8 +282,8 @@ def test_new_cases():
 
     # 1)
     global _classifier
-    classifierFile = input("\nEnter the name of the classifier file (.bin) to load, or leave the field empty to use the existing classifier: ")
-    if _classifier.get_from_bin(classifierFile):
+    classifierFile = input("\nEnter the name of the classifier file (.json) to load, or leave the field empty to use the existing classifier: ")
+    if _classifier.get_from_file(classifierFile):
         print("Classifier loaded from file " + classifierFile)
     elif classifierFile == "":
         print("Blank input. Using currently loaded classification model...")
@@ -318,27 +322,24 @@ def test_new_cases():
                 if choice == "a":
                     case = [(input("Enter a value for {0} ({1}): ".format(x, attributeRanges[x]
                                                                           if attributeRanges[x] == _numeric
-                                                                          else [h.decode(_encoding)
-                                                                                for h in attributeRanges[x]]
+                                                                          else [h for h in attributeRanges[x]]
                                                                           ))
-                             ).encode(_encoding)
-                            for x in attributeRanges]
+                             ) for x in attributeRanges]
                 
                 # b1)
                 if choice == "b":
-                    prompt = "Enter the values for "
+                    prompt = "Enter the values for"
                     for x in attributeRanges:
-                        prompt = prompt + "{0} (values: {1}), ".format(x, attributeRanges[x]
+                        prompt = prompt + "\n{0} (values: {1}), ".format(x, attributeRanges[x]
                                                                if attributeRanges[x] == _numeric
-                                                               else [h.decode(_encoding)
-                                                                     for h in attributeRanges[x]])
-                    prompt = prompt + "each separated by a single space: "
+                                                               else [h for h in attributeRanges[x]
+                                                                     ])
+                    prompt = prompt + "\neach separated by a single space: "
                     case = input(prompt).split(" ")
-
-                    case = [x.encode(_encoding) for x in case]
+                    
                 # ab2)
                 classification = _classifier.classify(case)
-                print("\nCase {0} was classified as [{1}]".format([x.decode(_encoding) for x in case], classification.decode(_encoding)))
+                print("\nCase {0} was classified as [{1}]".format([x for x in case], classification))
                 if classification == None:
                     print("The case being classified as None means that either every class has a probability of 0 or there are no classes.")
                 
