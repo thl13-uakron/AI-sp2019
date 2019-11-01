@@ -47,7 +47,7 @@ class Dataset:
             
             return True
         
-        except FileNotFoundError as e:
+        except (FileNotFoundError, SyntaxError, StopIteration):
             return False
 
 class Classifier:
@@ -88,12 +88,34 @@ class Classifier:
 
     # write .json file using classification data
     def write_to_file(self, filename):
-        return
+        try:
+            outfile = open(filename, "w")
+            outfile.write(str({"inverse" : self.inverse,
+                               "prior" : self.prior,
+                               "types" : self.types,
+                               "labels" : self.labels}))
+            outfile.close()
+            return True
+
+        except FileNotFoundError:
+            return False
     
     # attempt to retrieve classification data from .json file
     # return whether or not file operation was successful
     def get_from_file(self, filename):
-        return False
+        try:
+            infile = open(filename, "r")
+            data = eval(infile.read())
+            
+            self.inverse = data["inverse"]
+            self.prior = data["prior"]
+            self.types = data["types"]
+            self.labels = data["labels"]
+            
+            return True
+
+        except (FileNotFoundError, SyntaxError):
+            return False
 
     # get p(c) for a single classification c given classification data
     def get_prior(self, c):
@@ -202,7 +224,7 @@ def learn_classifier():
     # 2)
     print("Generating dataset...")
     if not _dataset.get_from_arff(dataFile):
-        print("[RuntimeError] Input file not found")
+        print("[RuntimeError] Input file invalid or not found")
         return
 
     # 3)
@@ -232,7 +254,7 @@ def load_and_test():
     elif classifierFile == "":
         print("Blank input. Using currently loaded classification model...")
     else:
-        print("Input file not found. Using currently loaded classification model...")
+        print("Input file invalid or not found. Using currently loaded classification model...")
         
     if len(_classifier.get_classes()) == 0:
         print("[RuntimeError] Classifier appears to contain no data")
@@ -246,7 +268,7 @@ def load_and_test():
     elif classifierFile == "":
         print("Blank input. Using currently loaded dataset...")
     else:
-        print("Input file not found. Using currently loaded dataset..")
+        print("Input file invalid or not found. Using currently loaded dataset..")
 
     if len(_dataset.instances) == 0:
         print("[RuntimeError] Dataset appears to contain no data")
@@ -267,6 +289,9 @@ def load_and_test():
 
     except KeyError:
         print("[KeyError] Attempting to work with classifier that doesn't match dataset")
+
+    except IndexError:
+        print("[IndexError] Attempting to work with classifier that doesn't match dataset")
     
     return
 
@@ -288,7 +313,7 @@ def test_new_cases():
     elif classifierFile == "":
         print("Blank input. Using currently loaded classification model...")
     else:
-        print("Input file not found. Using currently loaded classification model...")
+        print("Input file invalid or not found. Using currently loaded classification model...")
 
     # used for input prompt
     attributeRanges = {_classifier.labels[i]:
