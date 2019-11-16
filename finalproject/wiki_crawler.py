@@ -7,12 +7,20 @@
 
 import urllib.request
 from bs4 import BeautifulSoup
-
-# get an iterable that yields every article in a list
-def get_articles_in_list(list_name):
-    yield  
+from mediawiki import MediaWiki
 
 # data representation for individual articles
+# current approach using tools provided by the pymediawiki module
+wikipedia = MediaWiki()
+def get_article(topic_name):
+    page = wikipedia.page(topic_name)
+    return {"title" : page.title,
+            "summary" : page.summary,
+            "categories" : page.categories}
+"""
+older approach involving scraping pages corresponding to articles and
+attempting to parse the full HTML
+
 class Article:
     # full page contents
     html = {}
@@ -55,26 +63,52 @@ class Article:
         return self.article_text
     # infobox contents
     def get_infobox(self):
-        return self.infobox
-    # categories (as listed on page)
+        try:
+            parent_element = self.html.find("table", {"class":"infobox vevent"}).tbody
+            return parent_element
+        except:
+            return {}
+    # categories listed on pages
     def get_categories(self):
         parent_element = self.html.find("div", id="mw-normal-catlinks").ul
-        return parent_element
-    # categories (including all super-categories)
-    def get_all_categories(self):
-        # recursively find each category that the current categories fall under
-        # and append them to the list of categories to return
-        return self.get_categories() + [super_category for category in self.categories 
-                                  for super_category
-                                  in Article("Category:" + category).get_all_categories()
-                                  ]
+        return [category for category_item in parent_element.find_all("li")
+                for category in category_item.a.children]
         
     # return the article in object form for database storage
     def get_object(self):
-        return
+        return {"html":self.html}
+"""
+# get a list of the titles of each good article
+def get_good_article_titles():
+    return
+# get an iterable that yields the contents of each good article
+def get_good_articles():
+    yield 
     
+# get a list of the titles of each featured article
+def get_featured_article_titles():
+    url = "https://en.wikipedia.org/wiki/Wikipedia:Featured_articles"
+    request = urllib.request.Request(url)
+    response = urllib.request.urlopen(request)
     
-
+    html = response.read().decode("utf8")
+    parent_element = BeautifulSoup(html).find("div", {"class":"hlist", "style":"margin: 1px; vertical-align:top; padding:1em 1em 1em 1em; border:1px solid #A3BFB1; background-color:#F1F6FB"})
+    return [e.get_text() for e in parent_element.find_all("li")]
+# get an iterable that yields the contents of each featured article
+def get_featured_articles():
+    for title in get_featured_article_titles():
+        yield get_article(title)
+    
+# test the functions in this module
 def test():
-    a = Article("Python (programming language)")
-    print(a.get_categories())
+    print(get_article("Youngstown, Ohio"))
+    print(get_article("Python (Programming Language)"))
+    print(get_featured_article_titles())
+    articles = get_featured_articles()
+    i = 0
+    for a in articles:
+        print(a)
+        i += 1
+        if i > 5:
+            break
+    
